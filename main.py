@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import config
 from aiogram import Bot, Dispatcher
 import db, notif
 import asyncio
@@ -13,7 +12,10 @@ from middleware import SchedulerMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 # Инициализируем логгер
 logger = logging.getLogger(__name__)
+from config import Config, load_config
 
+config: Config = load_config()
+BOT_TOKEN: str = config.tg_bot.token
 
 async def start():
     # Конфигурируем логирование
@@ -26,7 +28,7 @@ async def start():
     logger.info('Starting bot')
 
     # Объект бота
-    bot = Bot(token=config.BOT_TOKEN, parse_mode='HTML')
+    bot = Bot(token=BOT_TOKEN, parse_mode='HTML')
     #pool_connect = create_pool()
     # Диспетчер
     dp = Dispatcher()

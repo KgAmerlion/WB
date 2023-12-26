@@ -16,12 +16,17 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 import sqlite3 as sq
 
+from config import Config, load_config
+
+config: Config = load_config()
+BOT_TOKEN: str = config.tg_bot.token
+
 headers = CaseInsensitiveDict()
 
 storage = MemoryStorage()
 
 router = Router()
-bot = Bot(token=config.BOT_TOKEN)
+bot = Bot(token=BOT_TOKEN)
 buttonlist = [
     types.KeyboardButton(text="Добавить магазин")
     , types.KeyboardButton(text="Удалить магазин")
