@@ -1,12 +1,9 @@
 import logging
 from aiogram import Bot, Dispatcher
-import db, notif
+import db
 import asyncio
 import schedule
-import aioschedule
 import time
-from threading import Thread
-from datetime import datetime
 from middleware import SchedulerMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 # Инициализируем логгер

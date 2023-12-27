@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from aiogram import F, types, Router, Bot
-from aiogram.filters import Command, CommandStart, StateFilter
+from aiogram import F,  Router, Bot
+from aiogram.filters import  CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import default_state, State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -55,7 +55,7 @@ kb_builder.row(*buttons, width=3)
 user_dict = {}
 name = None
 user = None
-status = None
+status = 1
 
 
 class Add(StatesGroup):
