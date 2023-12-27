@@ -100,7 +100,7 @@ async def process_fillform_command(message: Message, state: FSMContext):
 
 @router.message(StateFilter(Add.name), F.text)
 async def process_name_sent(message: Message, state: FSMContext):
-    global name
+    global name, status
     # Cохраняем введенное имя в хранилище по ключу "name"
     await state.update_data(name=message.text)
     if message.text in ("Список магазинов", "Добавить магазин", "Удалить магазин", "Рассылка"):
@@ -117,14 +117,15 @@ async def process_name_sent(message: Message, state: FSMContext):
         if len(_to_add) != 0:
             await message.answer(text='Магазин с таким названием уже есть')
             # Завершаем машину состояний
+            await state.clear()
         else:
             await message.answer(text='Спасибо!\n\nА теперь введите API вашего магазина')
             # Устанавливаем состояние ожидания ввода API
             await state.set_state(Add.wb_token)
         cur.close()
         db.close()
-        # Завершаем машину состояний
-        await state.clear()
+
+        status = 1
 
 
 @router.message(StateFilter(Add.wb_token), F.text)
@@ -164,6 +165,7 @@ async def delete_name_shop(message: Message, state: FSMContext):
 
 @router.message(StateFilter(Delete.name), F.text)
 async def delete_shop(message: Message, state: FSMContext):
+    global status
     await state.update_data(name=message.text)
     if message.text in ("Список магазинов", "Удалить магазин", "Рассылка"):
         await message.answer(text='Некорректное название. Введите повторно')
@@ -187,6 +189,7 @@ async def delete_shop(message: Message, state: FSMContext):
         db.close()
         # Завершаем машину состояний
         await state.clear()
+        status = 1
 
 
 # список магазинов
@@ -252,20 +255,25 @@ async def report(bot, chat_id, apscheduler):
             headers["Authorization"] = api
             init = 'https://statistics-api.wildberries.ru/api/v1/supplier/'
 
-            date_from = datetime.today()
+            date_t = datetime.today()
+            date_y = date_t - timedelta(days=1)
 
-            results = {i: f'{init}{i}?dateFrom={date_from}&flag=1' for i in ['sales', 'orders']}
-            sales = pd.DataFrame(requests.get(results['sales'], headers=headers).json())  # продажи
-            orders = pd.DataFrame(requests.get(results['orders'], headers=headers).json())  # заказы
+            date_y.strftime("%Y-%m-%d")
+            date_t.strftime("%Y-%m-%dT%H:%M:%S")
 
-            sales['date_column'] = pd.to_datetime(sales['date']).dt.date
-            orders['date_column'] = pd.to_datetime(orders['date']).dt.date
+            results = {i: f'{init}{i}?dateFrom={date_t}&flag=1' for i in ['orders']}
+            orders_t = pd.DataFrame(requests.get(results['orders'], headers=headers).json())  # заказы на текущую дату
 
-            ttl_sum_sales = sum(sales['priceWithDisc'])
-            ttl_sum_orders = sum(orders['priceWithDisc'])
-            await bot.send_message(chat_id, f"Магазин: {info[j][0]}\n"
-                                            f"Выкупили: {ttl_sum_sales}\n"
-                                            f"Заказали: {ttl_sum_orders}")
+            results = {i: f'{init}{i}?dateFrom={date_y}&flag=1' for i in ['orders']}
+            orders_y = pd.DataFrame(requests.get(results['orders'], headers=headers).json())  # заказы на вчера
+
+            ttl_sum_orders_t = round(sum(orders_t['priceWithDisc']))
+            ttl_sum_orders_y = round(sum(orders_y['priceWithDisc']))
+            dif = ttl_sum_orders_t-ttl_sum_orders_y
+            await bot.send_message(chat_id, f"Прогноз {info[j][0]}: {ttl_sum_orders_y+dif}\n"
+                                            f"Сегодня: {ttl_sum_orders_t}\n"
+                                            f"Вчера: {ttl_sum_orders_y}\n"
+                                            f"Разница: {dif}")
     else:
         await bot.send_message(chat_id, f'У вас еще нет магазинов')
         apscheduler.remove_job('subscription')
@@ -284,7 +292,9 @@ async def process_button_1_press(callback: CallbackQuery, bot: Bot, apscheduler:
         await callback.message.answer(f'Рассылка включена. Отчет будет присылаться каждые 3 часа')
         apscheduler.add_job(report,
                             trigger='interval',
-                            seconds=30,
+                            hours=1,
+                            #seconds=60,
+                            #minutes=10,
                             kwargs={'bot': bot,
                                     'chat_id': user,
                                     'apscheduler': apscheduler},
