@@ -298,7 +298,7 @@ async def process_button_1_press(callback: CallbackQuery, bot: Bot, apscheduler:
                             kwargs={'bot': bot,
                                     'chat_id': user,
                                     'apscheduler': apscheduler},
-                            id=f'subscription')
+                            id=f'subscription_{user}')
 
     else:
         await callback.message.answer(f'У вас еще нет магазинов')
@@ -310,7 +310,7 @@ async def process_button_1_press(callback: CallbackQuery, apscheduler: AsyncIOSc
     print(jobs)
     if jobs is not None:
         await callback.message.answer(f'Рассылка отключена')
-        apscheduler.remove_job('subscription')
+        apscheduler.remove_job(f'subscription_{user}')
     else:
         await callback.message.answer(f'Вы еще не подключили рассылку')
 

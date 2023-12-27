@@ -54,12 +54,7 @@ async def analyse_shop(message: Message, state: FSMContext):
 #     await bot.send_message(chat_id, f'привет')
 #
 #
-# @router.callback_query(F.data == 'big_button_1_pressed')
-# async def process_button_1_press(callback: CallbackQuery, bot: Bot, apscheduler: AsyncIOScheduler):
-#     await callback.message.edit_text(
-#         text='Рассылка включена.',
-#         reply_markup=callback.message.reply_markup
-#     )
+
 #     apscheduler.add_job(notif, trigger='interval', minutes=2,
 #                          kwargs={'bot': bot, 'chat_id': user})
 # @router.message(F.text == 'Рассылка')
