@@ -11,10 +11,17 @@ from middleware import SchedulerMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 # Инициализируем логгер
 logger = logging.getLogger(__name__)
-from config import Config, load_config
+from config import Config, load_config, load_config_debug
 
-config: Config = load_config()
-BOT_TOKEN: str = config.tg_bot.token
+
+DEBUG = False
+if DEBUG:
+    config: Config = load_config_debug()
+    BOT_TOKEN_DEBUG: str = config.tg_bot.token
+else:
+    config: Config = load_config()
+    BOT_TOKEN: str = config.tg_bot.token
+
 
 async def start():
     # Конфигурируем логирование
@@ -27,7 +34,10 @@ async def start():
     logger.info('Starting bot')
 
     # Объект бота
-    bot = Bot(token=BOT_TOKEN, parse_mode='HTML')
+    if DEBUG:
+        bot = Bot(token=BOT_TOKEN_DEBUG, parse_mode='HTML')
+    else:
+        bot = Bot(token=BOT_TOKEN, parse_mode='HTML')
     #pool_connect = create_pool()
     # Диспетчер
     dp = Dispatcher()
