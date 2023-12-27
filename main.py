@@ -5,7 +5,7 @@ import asyncio
 import schedule
 import time
 from middleware import SchedulerMiddleware
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.schedulers.background import BackgroundScheduler
 # Инициализируем логгер
 logger = logging.getLogger(__name__)
 from config import Config, load_config, load_config_debug
@@ -38,7 +38,7 @@ async def start():
     #pool_connect = create_pool()
     # Диспетчер
     dp = Dispatcher()
-    scheduler = AsyncIOScheduler(timezone='Europe/Moscow')
+    scheduler = BackgroundScheduler(timezone='Europe/Moscow')
 
     scheduler.start()
 

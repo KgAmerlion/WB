@@ -13,7 +13,7 @@ from requests.structures import CaseInsensitiveDict
 from datetime import datetime, timedelta
 import pandas as pd
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.schedulers.background import BackgroundScheduler
 
 import sqlite3 as sq
 
@@ -230,7 +230,7 @@ keyboard_inline_sub = InlineKeyboardMarkup(
 )
 
 @router.message(F.text == 'Рассылка')
-async def subs_name_shop(message: Message, bot: Bot, apscheduler: AsyncIOScheduler):
+async def subs_name_shop(message: Message, bot: Bot, apscheduler: BackgroundScheduler):
     global user
     user = message.from_user.id
     await message.answer(
@@ -280,7 +280,7 @@ async def report(bot, chat_id, apscheduler):
 
 
 @router.callback_query(F.data == 'dispatch_on')
-async def process_button_1_press(callback: CallbackQuery, bot: Bot, apscheduler: AsyncIOScheduler):
+async def process_button_1_press(callback: CallbackQuery, bot: Bot, apscheduler: BackgroundScheduler):
     db = sq.connect('my_bd.sql')
     cur = db.cursor()
     cur.execute(
@@ -305,7 +305,7 @@ async def process_button_1_press(callback: CallbackQuery, bot: Bot, apscheduler:
 
 
 @router.callback_query(F.data == 'dispatch_off')
-async def process_button_1_press(callback: CallbackQuery, apscheduler: AsyncIOScheduler):
+async def process_button_1_press(callback: CallbackQuery, apscheduler: BackgroundScheduler):
     jobs = apscheduler.print_jobs()
     print(jobs)
     if jobs is not None:

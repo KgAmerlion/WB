@@ -1,11 +1,11 @@
 from typing import Dict, Any, Callable, Awaitable
 from aiogram import BaseMiddleware
 from aiogram.types.base import TelegramObject
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.schedulers.background import BackgroundScheduler
 
 
 class SchedulerMiddleware(BaseMiddleware):
-    def __init__(self, scheduler: AsyncIOScheduler):
+    def __init__(self, scheduler: BackgroundScheduler):
         self.scheduler = scheduler
 
     async def __call__(
