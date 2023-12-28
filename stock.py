@@ -131,3 +131,56 @@ async def analyse_shop(message: Message, state: FSMContext):
 
 
 
+# def schedule_checker():
+#     while True:
+#         schedule.run_pending()
+#         time.sleep(1)
+#
+# async def start():
+#     # Конфигурируем логирование
+#     logging.basicConfig(
+#         level=logging.INFO,
+#         format='%(filename)s:%(lineno)d #%(levelname)-8s '
+#                '[%(asctime)s] - %(name)s - %(message)s')
+#
+#     # Выводим в консоль информацию о начале запуска бота
+#     logger.info('Starting bot')
+#
+#     # Объект бота
+#     if DEBUG:
+#         bot = Bot(token=BOT_TOKEN_DEBUG, parse_mode='HTML')
+#     else:
+#         bot = Bot(token=BOT_TOKEN, parse_mode='HTML')
+#
+#     # Диспетчер
+#     dp = Dispatcher()
+#
+#     scheduler = BackgroundScheduler(daemon=True, timezone='Europe/Moscow')
+#     scheduler.start()
+#
+#     answering_thread1 = Thread(target=db.process_button_1_press)
+#     answering_thread1.start()
+#     dp.update.middleware.register(SchedulerMiddleware(scheduler))
+#
+#     # Регистриуем роутеры в диспетчере
+#     dp.include_router(db.router)
+#
+#     # Пропускаем накопившиеся апдейты и запускаем polling
+#     await bot.delete_webhook(drop_pending_updates=True)
+#     try:
+#         await dp.start_polling(bot)
+#     finally:
+#         bot.session.close()
+#
+#
+# if __name__ == '__main__':
+#     try:
+#         asyncio.run(start())
+#     except Exception as e:
+#         logging.error((f'Error: {e}'))
+#     # schedule.every(5).minutes.do(notif.report_notif)
+#     #Thread(target=schedule_checker).start()
+#
+#     # while True:
+#     #     schedule.run_pending()
+#     #     time.sleep(1)

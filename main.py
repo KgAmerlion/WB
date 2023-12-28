@@ -1,26 +1,348 @@
 import logging
 from aiogram import Bot, Dispatcher
-import db
 import asyncio
+import threading
 import schedule
+from aiogram import F, Router, Bot
+from aiogram.filters import CommandStart, StateFilter
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import default_state, State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import (CallbackQuery, InlineKeyboardButton,
+                           InlineKeyboardMarkup, Message, KeyboardButton)
+from aiogram.utils.keyboard import ReplyKeyboardBuilder
+import requests
+from requests.structures import CaseInsensitiveDict
+from datetime import datetime, timedelta
 import time
-from middleware import SchedulerMiddleware
+import pandas as pd
+
 from apscheduler.schedulers.background import BackgroundScheduler
-# Инициализируем логгер
-logger = logging.getLogger(__name__)
+
+import sqlite3 as sq
+
+import report
 from config import Config, load_config, load_config_debug
 
+# Инициализируем логгер
+logger = logging.getLogger(__name__)
+DEBUG = True
 
-DEBUG = False
 if DEBUG:
     config: Config = load_config_debug()
     BOT_TOKEN_DEBUG: str = config.tg_bot.token
+    bot = Bot(token=BOT_TOKEN_DEBUG)
 else:
     config: Config = load_config()
     BOT_TOKEN: str = config.tg_bot.token
+    bot = Bot(token=BOT_TOKEN)
+
+storage = MemoryStorage()
+headers = CaseInsensitiveDict()
+
+storage = MemoryStorage()
+thread_stop = True
+today = 0.
+y_day = 0.
 
 
-async def start():
+async def get_all_users():
+    db = sq.connect('my_bd.sql')
+    cur = db.cursor()
+    cur.execute(
+        "SELECT user_id FROM profiles WHERE dispatch != '%s'" % '0')
+    data = cur.fetchall()
+    return data
+
+
+new_loop = None
+
+
+def dispatch_is_on():
+    global today, y_day
+    db = sq.connect('my_bd.sql')
+    cur = db.cursor()
+    cur.execute(
+        "SELECT user_id FROM profiles WHERE dispatch != '%s'" % '0')
+    users = cur.fetchall()
+    print(f'{users}')
+    if len(users) != 0:
+        print('jr')
+        for i in users:
+            today, y_day = report.report(i, bot, 168254118)
+    new_loop.create_task(send_report(today, y_day, 168254118))
+    # f = asyncio.run_coroutine_threadsafe(send_report(today, y_day, 168254118), new_loop)
+    # f.result()
+    return today, y_day
+
+
+async def send_report(t: float, y: float, chat_id: int):
+    await bot.send_message(chat_id, f'{t}, {y}')
+
+
+router = Router()
+
+
+@router.callback_query(F.data == 'dispatch_on')
+async def process_button_1_press(callback: CallbackQuery):
+    global new_loop
+    await callback.message.answer(f'Вы подключили рассылку')
+    db = sq.connect('my_bd.sql')
+    cur = db.cursor()
+    cur.execute(f"UPDATE profiles SET dispatch = {'1'} WHERE user_id = {user};")
+    db.commit()
+    cur.close()
+    db.close()
+
+    # получаем новый цикл событий
+    new_loop = asyncio.new_event_loop()
+    # создаем поток с запущенным новым циклом событий
+    # thread = threading.Thread(target=dispatch_is_on)
+    # thread.start()
+
+
+# Инициализируем билдер
+kb_builder = ReplyKeyboardBuilder()
+
+# Создаем список с кнопками
+buttons: list[KeyboardButton] = [
+    KeyboardButton(text="Добавить магазин")
+    , KeyboardButton(text="Удалить магазин")
+    , KeyboardButton(text="Отмена")
+    , KeyboardButton(text="Список магазинов")
+    , KeyboardButton(text="Рассылка")
+]
+
+# Распаковываем список с кнопками в билдер, указываем, что
+# в одном ряду должно быть 3 кнопки
+kb_builder.row(*buttons, width=3)
+
+# Создаем "базу данных" пользователей
+user_dict = {}
+name = None
+user = None
+status = 1
+
+
+class Add(StatesGroup):
+    name = State()  # Will be represented in storage as 'Form:name
+    wb_token = State()
+
+
+class Delete(StatesGroup):
+    name = State()  # Will be represented in storage as 'Form:name
+
+
+@router.message(CommandStart(), StateFilter(default_state))
+async def process_start_command(message: Message):
+    db = sq.connect('my_bd.sql')
+    cur = db.cursor()
+    cur.execute('CREATE TABLE IF NOT EXISTS profiles (user_id int, name TEXT, wb_token TEXT, dispatch TEXT)')
+    db.commit()
+    cur.close()
+    db.close()
+
+    await message.answer(text=f"Привет, <b>{message.from_user.full_name}</b>. Этот бот поможет сделить за продажами.",
+                         reply_markup=kb_builder.as_markup(resize_keyboard=True)
+                         )
+
+
+@router.message(F.text == "Отмена")
+async def cancel_states(message: Message, state: FSMContext):
+    await state.clear()
+    await message.reply('Выберите действие')
+
+
+# добавление магазина
+@router.message(F.text == "Добавить магазин")
+async def process_fillform_command(message: Message, state: FSMContext):
+    if status != 0:
+        await (message.answer(text=f'Пожалуйста, введите название магазина'))
+        # Устанавливаем состояние ожидания ввода имени
+        await state.set_state(Add.name)
+    else:
+        await (message.answer(text=f'Повторите попытку'))
+
+
+@router.message(StateFilter(Add.name), F.text)
+async def process_name_sent(message: Message, state: FSMContext):
+    global name, status
+    # Cохраняем введенное имя в хранилище по ключу "name"
+    await state.update_data(name=message.text)
+    if message.text in ("Список магазинов", "Добавить магазин", "Удалить магазин", "Рассылка"):
+        await message.answer(text='Некорректное название. Введите повторно')
+    else:
+        shop_to_add = await state.get_data()
+        db = sq.connect('my_bd.sql')
+        cur = db.cursor()
+        cur.execute(
+            "SELECT name FROM profiles WHERE name == '%s' AND user_id == '%i'" % (
+                shop_to_add['name'], message.from_user.id))
+        _to_add = cur.fetchall()
+        db.commit()
+        if len(_to_add) != 0:
+            await message.answer(text='Магазин с таким названием уже есть')
+            # Завершаем машину состояний
+            await state.clear()
+        else:
+            await message.answer(text='Спасибо!\n\nА теперь введите API вашего магазина')
+            # Устанавливаем состояние ожидания ввода API
+            await state.set_state(Add.wb_token)
+        cur.close()
+        db.close()
+
+        status = 1
+
+
+@router.message(StateFilter(Add.wb_token), F.text)
+async def process_api(message: Message, state: FSMContext):
+    # Cохраняем данные о API
+    await state.update_data(wb_token=message.text)
+    # Добавляем в "базу данных" анкету пользователя
+    # по ключу id пользователя
+    user_dict[message.from_user.id] = await state.get_data()
+
+    db = sq.connect('my_bd.sql')
+    cur = db.cursor()
+
+    cur.execute(
+        'INSERT INTO profiles VALUES (?, ?, ?, ?)', (message.from_user.id,
+                                                     user_dict[message.from_user.id]['name'],
+                                                     user_dict[message.from_user.id]['wb_token'],
+                                                     0))
+    db.commit()
+    cur.close()
+    db.close()
+
+    # Завершаем машину состояний
+    await state.clear()
+    await message.answer(text='Магазин добавлен')
+    # reply_markup=keyboard_inline)
+
+
+# удаление магазина
+@router.message(F.text == "Удалить магазин")
+async def delete_name_shop(message: Message, state: FSMContext):
+    global status
+    await message.answer(text='Пожалуйста, введите название магазина, который хотите удалить')
+    status = 0
+    # Устанавливаем состояние ожидания ввода имени
+    await state.set_state(Delete.name)
+
+
+@router.message(StateFilter(Delete.name), F.text)
+async def delete_shop(message: Message, state: FSMContext):
+    global status
+    await state.update_data(name=message.text)
+    if message.text in ("Список магазинов", "Удалить магазин", "Рассылка"):
+        await message.answer(text='Некорректное название. Введите повторно')
+    else:
+        shop_to_delete = await state.get_data()
+        db = sq.connect('my_bd.sql')
+        cur = db.cursor()
+        cur.execute(
+            "SELECT name FROM profiles WHERE name == '%s' AND user_id == '%i'" % (
+                shop_to_delete['name'], message.from_user.id))
+        _to_delete = cur.fetchall()
+        if len(_to_delete) == 0:
+            await message.answer(text='Такого магазина нет в списке')
+        else:
+            cur.execute(
+                "DELETE FROM profiles WHERE name == '%s' AND user_id == '%i'" % (
+                    shop_to_delete['name'], message.from_user.id))
+            db.commit()
+            await message.answer(text='Магазин удален')
+        cur.close()
+        db.close()
+        # Завершаем машину состояний
+        await state.clear()
+        status = 1
+
+
+# список магазинов
+@router.message(F.text == 'Список магазинов')
+async def process_button_2_press(message: Message, state: FSMContext):
+    db = sq.connect('my_bd.sql')
+    cur = db.cursor()
+
+    cur.execute(
+        "SELECT name FROM profiles WHERE user_id == '%i'" % message.from_user.id)
+
+    profiles = cur.fetchall()
+    info = ''
+    i = 1
+    for el in profiles:
+        info += f"{i}. {el[0]}\n"
+        i += 1
+    cur.close()
+    db.close()
+
+    if len(info) == 0:
+        await message.answer(text='У вас еще нет магазинов')
+    else:
+        await message.answer(info)
+
+
+# рассылка
+button_1 = InlineKeyboardButton(
+    text='Включить рассылку',
+    callback_data='dispatch_on'
+)
+button_2 = InlineKeyboardButton(
+    text='Отключить рассылку',
+    callback_data='dispatch_off'
+)
+keyboard_inline_sub = InlineKeyboardMarkup(
+    inline_keyboard=[[button_1], [button_2]]
+)
+
+
+@router.message(F.text == 'Рассылка')
+async def subs_name_shop(message: Message):
+    global user
+    user = message.from_user.id
+    await message.answer(
+        text='Что необходимо сделать?',
+        reply_markup=keyboard_inline_sub
+    )
+
+    #     schedule.every(1).minutes.do(report.report(bot, user))
+    # apscheduler.add_job(report,
+    #                     trigger='interval',
+    #                     #hours=1,
+    #                     #seconds=60,
+    #                     minutes=1,
+    #                     kwargs={'bot': bot,
+    #                             'chat_id': user,
+    #                             'apscheduler': apscheduler},
+    #                     id=f'subscription_{user}')
+    # asyncio.run(report(bot, user))
+    # else:
+    #     await callback.message.answer(f'У вас еще нет магазинов')
+
+
+@router.callback_query(F.data == 'dispatch_off')
+async def process_button_1_press(callback: CallbackQuery, apscheduler: BackgroundScheduler):
+    jobs = apscheduler.print_jobs()
+    print(jobs)
+    if jobs is not None:
+        await callback.message.answer(f'Рассылка отключена')
+        apscheduler.remove_job(f'subscription_{user}')
+    else:
+        await callback.message.answer(f'Вы еще не подключили рассылку')
+
+
+def run_scheduler():
+    schedule.every(1).minutes.do(dispatch_is_on)
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+
+
+scheduler_thread = threading.Thread(target=run_scheduler)
+
+
+async def main():
     # Конфигурируем логирование
     logging.basicConfig(
         level=logging.INFO,
@@ -29,41 +351,15 @@ async def start():
 
     # Выводим в консоль информацию о начале запуска бота
     logger.info('Starting bot')
-
-    # Объект бота
-    if DEBUG:
-        bot = Bot(token=BOT_TOKEN_DEBUG, parse_mode='HTML')
-    else:
-        bot = Bot(token=BOT_TOKEN, parse_mode='HTML')
-    #pool_connect = create_pool()
-    # Диспетчер
-    dp = Dispatcher()
-    scheduler = BackgroundScheduler(timezone='Europe/Moscow')
-
-    scheduler.start()
-
-    dp.update.middleware.register(SchedulerMiddleware(scheduler))
-    # Регистриуем роутеры в диспетчере
-    dp.include_router(db.router)
-    #notif.include_router(db.router)
-
-
-
-    # Пропускаем накопившиеся апдейты и запускаем polling
-    await bot.delete_webhook(drop_pending_updates=True)
-    try:
-        await dp.start_polling(bot)
-    finally:
-        bot.session.close()
-
-
-def schedule_checker():
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
+    dp = Dispatcher(storage=storage)
+    dp.include_router(router)
+    await dp.start_polling(bot, skip_updates=True)
 
 
 if __name__ == '__main__':
-    # schedule.every(5).minutes.do(notif.report_notif)
-    # Thread(target=schedule_checker).start()
-    asyncio.run(start())
+    try:
+        # answering_thread1.start()
+        scheduler_thread.start()
+        asyncio.run(main())
+    except Exception as e:
+        logging.error((f'Error: {e}'))

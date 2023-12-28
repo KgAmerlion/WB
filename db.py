@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+import threading
+
+import schedule
 from aiogram import F,  Router, Bot
 from aiogram.filters import  CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
@@ -17,9 +21,11 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 import sqlite3 as sq
 
+import report
 from config import Config, load_config, load_config_debug
 
-DEBUG = False
+
+DEBUG = True
 
 if DEBUG:
     config: Config = load_config_debug()
@@ -34,7 +40,14 @@ headers = CaseInsensitiveDict()
 
 storage = MemoryStorage()
 
+def dis():
+    while True:
+        asyncio.run(dispatch_is_on(bot))
+
 router = Router()
+
+answering_thread1 = threading.Thread(target=dis, args=(bot))
+
 # Инициализируем билдер
 kb_builder = ReplyKeyboardBuilder()
 
@@ -71,7 +84,7 @@ class Delete(StatesGroup):
 async def process_start_command(message: Message):
     db = sq.connect('my_bd.sql')
     cur = db.cursor()
-    cur.execute('CREATE TABLE IF NOT EXISTS profiles (user_id int, name TEXT, wb_token TEXT)')
+    cur.execute('CREATE TABLE IF NOT EXISTS profiles (user_id int, name TEXT, wb_token TEXT, dispatch TEXT)')
     db.commit()
     cur.close()
     db.close()
@@ -140,9 +153,10 @@ async def process_api(message: Message, state: FSMContext):
     cur = db.cursor()
 
     cur.execute(
-        'INSERT INTO profiles VALUES (?, ?, ?)', (message.from_user.id,
-                                                  user_dict[message.from_user.id]['name'],
-                                                  user_dict[message.from_user.id]['wb_token']))
+        'INSERT INTO profiles VALUES (?, ?, ?, ?)', (message.from_user.id,
+                                                     user_dict[message.from_user.id]['name'],
+                                                     user_dict[message.from_user.id]['wb_token'],
+                                                     0))
     db.commit()
     cur.close()
     db.close()
@@ -230,78 +244,49 @@ keyboard_inline_sub = InlineKeyboardMarkup(
 )
 
 @router.message(F.text == 'Рассылка')
-async def subs_name_shop(message: Message, bot: Bot, apscheduler: BackgroundScheduler):
+async def subs_name_shop(message: Message):
     global user
     user = message.from_user.id
     await message.answer(
             text='Что необходимо сделать?',
             reply_markup=keyboard_inline_sub
         )
-
-
-async def report(bot, chat_id, apscheduler):
+async def dispatch_is_on(bot: Bot):
     db = sq.connect('my_bd.sql')
     cur = db.cursor()
     cur.execute(
-        "SELECT name, wb_token FROM profiles WHERE user_id == '%i'" % chat_id)
-
+        "SELECT user_id, dispatch FROM profiles")
     info = cur.fetchall()
-    cur.close()
-    db.close()
-    # выгрузка
-    if len(info) != 0:
-        for j in range(len(info)):
-            api = info[j][1]
-            headers["Authorization"] = api
-            init = 'https://statistics-api.wildberries.ru/api/v1/supplier/'
-
-            date_t = datetime.today()
-            date_y = date_t - timedelta(days=1)
-
-            date_y.strftime("%Y-%m-%d")
-            date_t.strftime("%Y-%m-%dT%H:%M:%S")
-
-            results = {i: f'{init}{i}?dateFrom={date_t}&flag=1' for i in ['orders']}
-            orders_t = pd.DataFrame(requests.get(results['orders'], headers=headers).json())  # заказы на текущую дату
-
-            results = {i: f'{init}{i}?dateFrom={date_y}&flag=1' for i in ['orders']}
-            orders_y = pd.DataFrame(requests.get(results['orders'], headers=headers).json())  # заказы на вчера
-
-            ttl_sum_orders_t = round(sum(orders_t['priceWithDisc']))
-            ttl_sum_orders_y = round(sum(orders_y['priceWithDisc']))
-            dif = ttl_sum_orders_t-ttl_sum_orders_y
-            await bot.send_message(chat_id, f"Прогноз {info[j][0]}: {ttl_sum_orders_y+dif}\n"
-                                            f"Сегодня: {ttl_sum_orders_t}\n"
-                                            f"Вчера: {ttl_sum_orders_y}\n"
-                                            f"Разница: {dif}")
-    else:
-        await bot.send_message(chat_id, f'У вас еще нет магазинов')
-        apscheduler.remove_job('subscription')
-
-
+    if info[1] != '0':
+        report_1 = asyncio.create_task(report.report(bot, 168254118))
+        schedule.every(30).seconds.do(report_1)
+    await asyncio.sleep(.5)
 @router.callback_query(F.data == 'dispatch_on')
 async def process_button_1_press(callback: CallbackQuery, bot: Bot, apscheduler: BackgroundScheduler):
-    db = sq.connect('my_bd.sql')
-    cur = db.cursor()
-    cur.execute(
-        "SELECT wb_token FROM profiles WHERE user_id == '%i'" % user)
-    info = cur.fetchall()
-    cur.close()
-    db.close()
-    if len(info) != 0:
-        await callback.message.answer(f'Рассылка включена. Отчет будет присылаться каждые 3 часа')
-        apscheduler.add_job(report,
-                            trigger='interval',
-                            hours=1,
-                            #seconds=60,
-                            #minutes=10,
-                            kwargs={'bot': bot,
-                                    'chat_id': user,
-                                    'apscheduler': apscheduler},
-                            id=f'subscription_{user}')
-
-    else:
-        await callback.message.answer(f'У вас еще нет магазинов')
+    dis(bot)
+    # db = sq.connect('my_bd.sql')
+    # cur = db.cursor()
+    # cur.execute(
+    #     "SELECT wb_token FROM profiles WHERE user_id == '%i'" % user)
+    # info = cur.fetchall()
+    # # cur.close()
+    # # db.close()
+    # if len(info) != 0:
+    #     await callback.message.answer(f'Рассылка включена. Отчет будет присылаться каждые 3 часа')
+    #     cur.execute(f"UPDATE profiles SET dispatch = 1 WHERE user_id = {user};")
+    #     schedule.every(1).minutes.do(report.report(bot, user))
+        # apscheduler.add_job(report,
+        #                     trigger='interval',
+        #                     #hours=1,
+        #                     #seconds=60,
+        #                     minutes=1,
+        #                     kwargs={'bot': bot,
+        #                             'chat_id': user,
+        #                             'apscheduler': apscheduler},
+        #                     id=f'subscription_{user}')
+        #asyncio.run(report(bot, user))
+    # else:
+    #     await callback.message.answer(f'У вас еще нет магазинов')
 
 
 @router.callback_query(F.data == 'dispatch_off')
@@ -320,3 +305,5 @@ async def process_button_1_press(callback: CallbackQuery, apscheduler: Backgroun
 #     await message.answer(f"Введи /start",
 #                          parse_mode=ParseMode.HTML,
 #                          )
+
+
