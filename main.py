@@ -1,5 +1,7 @@
 import logging
 import traceback
+from datetime import datetime
+
 from aiogram import Dispatcher
 import asyncio
 import threading
@@ -16,7 +18,6 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from requests.structures import CaseInsensitiveDict
 import time
 import notifiers
-from apscheduler.schedulers.background import BackgroundScheduler
 import sqlite3 as sq
 import report
 from config import Config, load_config, load_config_debug
@@ -31,11 +32,11 @@ DEBUG = False
 if DEBUG:
     config: Config = load_config_debug()
     BOT_TOKEN_DEBUG: str = config.tg_bot.token
-    bot = Bot(token=BOT_TOKEN_DEBUG, parse_mode=ParseMode.MARKDOWN)
+    bot = Bot(token=BOT_TOKEN_DEBUG, parse_mode=ParseMode.HTML)
 else:
     config: Config = load_config()
     BOT_TOKEN: str = config.tg_bot.token
-    bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.MARKDOWN)
+    bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
 
 storage = MemoryStorage()
 headers = CaseInsensitiveDict()
@@ -43,7 +44,7 @@ headers = CaseInsensitiveDict()
 storage = MemoryStorage()
 today = 0.
 y_day = 0.
-
+t0 = datetime.now()
 
 async def get_all_users():
     db = sq.connect('my_bd.sql')
@@ -55,7 +56,7 @@ async def get_all_users():
 
 
 def dispatch_is_on(token):
-    logger.info('Starting dispatch')
+    logger.info(f'Starting dispatch {t0}')
     global today, y_day
     db = sq.connect('my_bd.sql')
     cur = db.cursor()
@@ -74,7 +75,7 @@ def dispatch_is_on(token):
                    f"Вчера: {y_day}\n"\
                    f"Разница: {dif}"
             tg.notify(message=text, token=token, chat_id=i[0])
-    logger.info('Dispatch is complete')
+    logger.info('Dispatch is complete', {t0})
 
 
 router = Router()
@@ -113,7 +114,7 @@ class Delete(StatesGroup):
 
 @router.message(CommandStart(), StateFilter(default_state))
 async def process_start_command(message: Message):
-    logging.info('New start')
+    logging.info(f'New start {t0}')
     db = sq.connect('my_bd.sql')
     cur = db.cursor()
     cur.execute('CREATE TABLE IF NOT EXISTS profiles (user_id int, name TEXT, wb_token TEXT, dispatch TEXT)')
@@ -128,7 +129,7 @@ async def process_start_command(message: Message):
 
 @router.message(F.text == "Отмена")
 async def cancel_states(message: Message, state: FSMContext):
-    logging.info('Cancel action')
+    logging.info(f'Cancel action {t0}')
     await state.clear()
     await message.reply('Выберите действие')
 
@@ -196,7 +197,7 @@ async def process_api(message: Message, state: FSMContext):
     # Завершаем машину состояний
     await state.clear()
     await message.answer(text='Магазин добавлен')
-    logging.info('Shop added')
+    logging.info(f'Shop added {t0}')
 
 
 
@@ -237,7 +238,7 @@ async def delete_shop(message: Message, state: FSMContext):
         # Завершаем машину состояний
         await state.clear()
         status = 1
-    logging.info('Shop deleted')
+    logging.info(f'Shop deleted {t0}')
 
 
 # список магазинов
@@ -262,7 +263,7 @@ async def shop_list(message: Message, state: FSMContext):
         await message.answer(text='У вас еще нет магазинов')
     else:
         await message.answer(info)
-    logging.info('Shop list')
+    logging.info(f'Shop list {t0}')
 
 
 # рассылка
@@ -279,7 +280,7 @@ keyboard_inline_sub = InlineKeyboardMarkup(
 )
 
 
-@router.message(F.text == 'Рассылка')
+@router.message(F.text == 'Отчет $')
 async def subs_name_shop(message: Message):
     global user
     user = message.from_user.id
@@ -290,7 +291,7 @@ async def subs_name_shop(message: Message):
 
 @router.callback_query(F.data == 'dispatch_on')
 async def subs_on(callback: CallbackQuery):
-    logging.info('Substiption started')
+    logging.info(f'Substiption started {t0}')
     await callback.message.answer(f'Вы подключили рассылку')
     db = sq.connect('my_bd.sql')
     cur = db.cursor()
@@ -301,21 +302,15 @@ async def subs_on(callback: CallbackQuery):
 
 
 @router.callback_query(F.data == 'dispatch_off')
-async def subs_off(callback: CallbackQuery, apscheduler: BackgroundScheduler):
-    jobs = apscheduler.print_jobs()
-    print(jobs)
-    if jobs is not None:
-        await callback.message.answer(f'Рассылка отключена')
-        db = sq.connect('my_bd.sql')
-        cur = db.cursor()
-        cur.execute(f"UPDATE profiles SET dispatch = {'0'} WHERE user_id = {user};")
-        db.commit()
-        cur.close()
-        db.close()
-        logging.info('Subscription canceled')
-    else:
-        await callback.message.answer(f'Вы еще не подключили рассылку')
-
+async def subs_off(callback: CallbackQuery):
+    await callback.message.answer(f'Рассылка отключена')
+    db = sq.connect('my_bd.sql')
+    cur = db.cursor()
+    cur.execute(f"UPDATE profiles SET dispatch = {'0'} WHERE user_id = {user};")
+    db.commit()
+    cur.close()
+    db.close()
+    logging.info(f'Subscription canceled {t0}')
 
 def run_scheduler():
     while True:
@@ -328,15 +323,16 @@ schedule.every(1).hours.do(dispatch_is_on, config.tg_bot.token)
 
 
 async def main():
+
     # Конфигурируем логирование
     logging.basicConfig(
         filename='app.log',
         filemode='a',
         level=logging.INFO,
-        format='%(asctime)s %(levelname) %(message)s')
+        format='%(asctime)s %(levelname)s %(message)s')
 
     # Выводим в консоль информацию о начале запуска бота
-    logger.info('Starting bot')
+    logger.info(f'Starting bot {t0}')
 
     dp = Dispatcher(storage=storage)
 
