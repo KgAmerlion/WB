@@ -9,7 +9,6 @@ headers = CaseInsensitiveDict()
 
 
 def report(user: tuple):
-    print(f'{user[0]}')
     db = sq.connect('my_bd.sql')
     cur = db.cursor()
     cur.execute(
@@ -38,5 +37,4 @@ def report(user: tuple):
 
             ttl_sum_orders_t = round(sum(orders_t['priceWithDisc']))
             ttl_sum_orders_y = round(sum(orders_y['priceWithDisc']))
-            print('hurray')
-            return ttl_sum_orders_t, ttl_sum_orders_y
+            return ttl_sum_orders_t, ttl_sum_orders_y, info[j][0]

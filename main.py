@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 tg = notifiers.get_notifier("telegram")
 
-DEBUG = False
+DEBUG = True
 
 if DEBUG:
     config: Config = load_config_debug()
@@ -56,26 +56,33 @@ async def get_all_users():
 
 
 def dispatch_is_on(token):
-    logger.info(f'Starting dispatch {t0}')
+    logger.info(f'Starting dispatch {datetime.now()}')
     global today, y_day
     db = sq.connect('my_bd.sql')
     cur = db.cursor()
     cur.execute(
-        "SELECT user_id FROM profiles WHERE dispatch != '%s'" % '0')
+        "SELECT DISTINCT user_id FROM profiles WHERE dispatch != '%s'" % '0')
     users = cur.fetchall()
-    print(f'{users}')
     if len(users) != 0:
-        print('jr')
         for i in users:
-            print(i[0])
-            today, y_day = report.report(i, bot, i[0])
-            dif = y_day - today
-            text = f"Прогноз : {y_day+dif}\n"\
+            today, y_day, shop_name = report.report(i)
+            dif = today - y_day
+            text = f"Магазин : {shop_name}\n" \
+                   f"Прогноз : {y_day + dif}\n" \
                    f"Сегодня: {today}\n"\
                    f"Вчера: {y_day}\n"\
                    f"Разница: {dif}"
             tg.notify(message=text, token=token, chat_id=i[0])
     logger.info('Dispatch is complete', {datetime.now()})
+def not_change(token):
+    db = sq.connect('my_bd.sql')
+    cur = db.cursor()
+    cur.execute(
+        "SELECT DISTINCT user_id FROM profiles")
+    text = "Собираем отчет. Не добавляйте и не удаляйте магазины до получения отчета."
+    users = cur.fetchall()
+    for i in users:
+        tg.notify(message=text, token=token, chat_id=i[0])
 
 
 router = Router()
@@ -196,7 +203,7 @@ async def process_api(message: Message, state: FSMContext):
 
     # Завершаем машину состояний
     await state.clear()
-    await message.answer(text='Магазин добавлен')
+    await message.answer(text='Магазин добавлен. Включите рассылку для нового магазина')
     logging.info(f'Shop added {datetime.now()}')
 
 
@@ -291,7 +298,7 @@ async def subs_name_shop(message: Message):
 
 @router.callback_query(F.data == 'dispatch_on')
 async def subs_on(callback: CallbackQuery):
-    logging.info(f'Substiption started {datetime.now()}')
+    logging.info(f'Subscription started {datetime.now()}')
     await callback.message.answer(f'Вы подключили рассылку. Отчет будет приходить каждые 3 часа.')
     db = sq.connect('my_bd.sql')
     cur = db.cursor()
@@ -320,7 +327,8 @@ def run_scheduler():
 
 scheduler_thread = threading.Thread(target=run_scheduler)
 
-schedule.every().hour.do(dispatch_is_on, config.tg_bot.token)
+schedule.every(5).minutes.do(dispatch_is_on, config.tg_bot.token)
+schedule.every(4).minutes.do(not_change, config.tg_bot.token)
 
 
 async def main():
