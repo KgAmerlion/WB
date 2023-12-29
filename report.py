@@ -1,38 +1,14 @@
 from __future__ import annotations
-
-import asyncio
-
-from aiogram import F,  Router, Bot
-from aiogram.filters import  CommandStart, StateFilter
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import default_state, State, StatesGroup
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import (CallbackQuery, InlineKeyboardButton,
-                           InlineKeyboardMarkup, Message, KeyboardButton)
-from aiogram.utils.keyboard import ReplyKeyboardBuilder
 import requests
 from requests.structures import CaseInsensitiveDict
 from datetime import datetime, timedelta
 import pandas as pd
-
-from apscheduler.schedulers.background import BackgroundScheduler
-
 import sqlite3 as sq
+
 headers = CaseInsensitiveDict()
-from config import Config, load_config, load_config_debug
-DEBUG = True
-
-if DEBUG:
-    config: Config = load_config_debug()
-    BOT_TOKEN_DEBUG: str = config.tg_bot.token
-    bot = Bot(token=BOT_TOKEN_DEBUG)
-else:
-    config: Config = load_config()
-    BOT_TOKEN: str = config.tg_bot.token
-    bot = Bot(token=BOT_TOKEN)
 
 
-def report(user: tuple, bot: Bot, chat_id: int):
+def report(user: tuple):
     print(f'{user[0]}')
     db = sq.connect('my_bd.sql')
     cur = db.cursor()
@@ -41,8 +17,6 @@ def report(user: tuple, bot: Bot, chat_id: int):
     info = cur.fetchall()
     cur.close()
     db.close()
-#await bot.send_message(chat_id, f'{info}')
-
     # выгрузка
     if len(info) != 0:
         for j in range(len(info)):
@@ -53,7 +27,7 @@ def report(user: tuple, bot: Bot, chat_id: int):
             date_t = datetime.today()
             date_y = date_t - timedelta(days=1)
 
-            date_y.strftime("%Y-%m-%d")
+            date_y.strftime("%Y-%m-%d%H:%M:%S")
             date_t.strftime("%Y-%m-%dT%H:%M:%S")
 
             results = f'{init}orders?dateFrom={date_t}&flag=1'
@@ -64,13 +38,5 @@ def report(user: tuple, bot: Bot, chat_id: int):
 
             ttl_sum_orders_t = round(sum(orders_t['priceWithDisc']))
             ttl_sum_orders_y = round(sum(orders_y['priceWithDisc']))
-            dif = ttl_sum_orders_t-ttl_sum_orders_y
             print('hurray')
             return ttl_sum_orders_t, ttl_sum_orders_y
-            # await bot.send_message(chat_id, f"Прогноз {info[j][0]}: {ttl_sum_orders_y+dif}\n"
-            #                                 f"Сегодня: {ttl_sum_orders_t}\n"
-            #                                 f"Вчера: {ttl_sum_orders_y}\n"
-            #                                 f"Разница: {dif}")
-    #else:
-         #await bot.send_message(chat_id, f'У вас еще нет магазинов')
-    #     apscheduler.remove_job('subscription_{user}')
