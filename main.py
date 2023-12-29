@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 tg = notifiers.get_notifier("telegram")
 
-DEBUG = False
+DEBUG = True
 
 if DEBUG:
     config: Config = load_config_debug()
@@ -73,7 +73,8 @@ def dispatch_is_on(token):
                    f"Вчера: {y_day}\n"\
                    f"Разница: {dif}"
             tg.notify(message=text, token=token, chat_id=i[0])
-    logger.info('Dispatch is complete', {datetime.now()})
+            logger.info(f'Dispatch was sent at  {datetime.now()} to user {i[0]}')
+    logger.info(f'Dispatch is complete {datetime.now()} ')
 def not_change(token):
     db = sq.connect('my_bd.sql')
     cur = db.cursor()
@@ -83,6 +84,7 @@ def not_change(token):
     users = cur.fetchall()
     for i in users:
         tg.notify(message=text, token=token, chat_id=i[0])
+        logger.info(f'Notif sent {datetime.now()} user {i[0]}')
 
 
 router = Router()
@@ -327,8 +329,8 @@ def run_scheduler():
 
 scheduler_thread = threading.Thread(target=run_scheduler)
 
-schedule.every(5).minutes.do(dispatch_is_on, config.tg_bot.token)
-schedule.every(4).minutes.do(not_change, config.tg_bot.token)
+schedule.every(60).minutes.do(dispatch_is_on, config.tg_bot.token)
+schedule.every(59).minutes.do(not_change, config.tg_bot.token)
 
 
 async def main():
