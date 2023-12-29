@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 tg = notifiers.get_notifier("telegram")
 
-DEBUG = True
+DEBUG = False
 
 if DEBUG:
     config: Config = load_config_debug()
