@@ -16,7 +16,7 @@ from requests.structures import CaseInsensitiveDict
 from datetime import datetime, timedelta
 import time
 import pandas as pd
-
+import notifiers
 from apscheduler.schedulers.background import BackgroundScheduler
 
 import sqlite3 as sq
@@ -56,9 +56,9 @@ async def get_all_users():
 
 
 new_loop = None
+tg = notifiers.get_notifier("telegram")
 
-
-def dispatch_is_on():
+def dispatch_is_on(token):
     global today, y_day
     db = sq.connect('my_bd.sql')
     cur = db.cursor()
@@ -69,8 +69,10 @@ def dispatch_is_on():
     if len(users) != 0:
         print('jr')
         for i in users:
-            today, y_day = report.report(i, bot, 168254118)
-    new_loop.create_task(send_report(today, y_day, 168254118))
+            print(i[0])
+            today, y_day = report.report(i, bot, i[0])
+            tg.notify(message=f'{today}, {y_day}', token = token, chat_id = i[0])
+    #new_loop.create_task(send_report(today, y_day, 168254118))
     # f = asyncio.run_coroutine_threadsafe(send_report(today, y_day, 168254118), new_loop)
     # f.result()
     return today, y_day
@@ -95,7 +97,7 @@ async def process_button_1_press(callback: CallbackQuery):
     db.close()
 
     # получаем новый цикл событий
-    new_loop = asyncio.new_event_loop()
+    #new_loop = asyncio.new_event_loop()
     # создаем поток с запущенным новым циклом событий
     # thread = threading.Thread(target=dispatch_is_on)
     # thread.start()
@@ -333,14 +335,13 @@ async def process_button_1_press(callback: CallbackQuery, apscheduler: Backgroun
 
 
 def run_scheduler():
-    schedule.every(1).minutes.do(dispatch_is_on)
     while True:
         schedule.run_pending()
         time.sleep(1)
 
 
 scheduler_thread = threading.Thread(target=run_scheduler)
-
+schedule.every(1).hours.do(dispatch_is_on, config.tg_bot.token)
 
 async def main():
     # Конфигурируем логирование

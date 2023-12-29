@@ -30,6 +30,8 @@ else:
     config: Config = load_config()
     BOT_TOKEN: str = config.tg_bot.token
     bot = Bot(token=BOT_TOKEN)
+
+
 def report(user: tuple, bot: Bot, chat_id: int):
     print(f'{user[0]}')
     db = sq.connect('my_bd.sql')
@@ -54,17 +56,17 @@ def report(user: tuple, bot: Bot, chat_id: int):
             date_y.strftime("%Y-%m-%d")
             date_t.strftime("%Y-%m-%dT%H:%M:%S")
 
-            results = {i: f'{init}{i}?dateFrom={date_t}&flag=1' for i in ['orders']}
-            orders_t = pd.DataFrame(requests.get(results['orders'], headers=headers).json())  # заказы на текущую дату
+            results = f'{init}orders?dateFrom={date_t}&flag=1'
+            orders_t = pd.DataFrame(requests.get(results, headers=headers).json())  # заказы на текущую дату
 
-            results = {i: f'{init}{i}?dateFrom={date_y}&flag=1' for i in ['orders']}
-            orders_y = pd.DataFrame(requests.get(results['orders'], headers=headers).json())  # заказы на вчера
+            results = f'{init}orders?dateFrom={date_y}&flag=1'
+            orders_y = pd.DataFrame(requests.get(results, headers=headers).json())  # заказы на вчера
 
             ttl_sum_orders_t = round(sum(orders_t['priceWithDisc']))
             ttl_sum_orders_y = round(sum(orders_y['priceWithDisc']))
             dif = ttl_sum_orders_t-ttl_sum_orders_y
             print('hurray')
-            return  ttl_sum_orders_t, ttl_sum_orders_y
+            return ttl_sum_orders_t, ttl_sum_orders_y
             # await bot.send_message(chat_id, f"Прогноз {info[j][0]}: {ttl_sum_orders_y+dif}\n"
             #                                 f"Сегодня: {ttl_sum_orders_t}\n"
             #                                 f"Вчера: {ttl_sum_orders_y}\n"
