@@ -29,18 +29,12 @@ tg = notifiers.get_notifier("telegram")
 
 DEBUG = False
 
-if DEBUG:
-    config: Config = load_config_debug()
-    BOT_TOKEN_DEBUG: str = config.tg_bot.token
-    adm: Admin = load_admin_id()
-    ADMIN: int = adm.admin
-    bot = Bot(token=BOT_TOKEN_DEBUG, parse_mode=ParseMode.HTML)
-else:
-    config: Config = load_config()
-    BOT_TOKEN: str = config.tg_bot.token
-    adm: Admin = load_admin_id()
-    ADMIN: int = adm.admin
-    bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
+
+config: Config = load_config()
+BOT_TOKEN: str = config.tg_bot.token
+adm: Admin = load_admin_id()
+ADMIN: int = adm.admin
+bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
 
 storage = MemoryStorage()
 headers = CaseInsensitiveDict()
@@ -61,7 +55,7 @@ async def get_all_users():
 
 
 def dispatch_is_on(token, admin):
-    tg.notify(message="Начало отправки отчётов", token=token, chat_id=admin)
+    #tg.notify(message="Начало отправки отчётов", token=token, chat_id=admin)
     global cancel
     cancel = 1
     logger.info(f'Starting dispatch {datetime.now()}')
@@ -81,10 +75,9 @@ def dispatch_is_on(token, admin):
                    f"Вчера: {y_day // 1000} {y_day % 1000}\n"\
                    f"Разница: {dif // 1000}  {dif % 1000}"
             tg.notify(message=text, token=token, chat_id=i[0])
-            logger.info(f'Dispatch was sent at  {datetime.now()} to user {i[0]}. Sleep 1 min')
-            time.sleep(60)
+            logger.info(f'Dispatch was sent at  {datetime.now()} to user {i[0]}. Sleep 2 min')
 
-    tg.notify(message="Отчеты отправлены", token=token, chat_id=admin)
+    #tg.notify(message="Отчеты отправлены", token=token, chat_id=admin)
     logger.info(f'Dispatch is complete {datetime.now()} ')
     cancel = 0
 def not_change(token, admin):
@@ -97,7 +90,7 @@ def not_change(token, admin):
     for i in users:
         tg.notify(message=text, token=token, chat_id=i[0])
         logger.info(f'Notif sent {datetime.now()} user {i[0]}')
-    tg.notify(message="Уведомления отправлены", token=token, chat_id=admin)
+    #tg.notify(message="Уведомления отправлены", token=token, chat_id=admin)
 
 
 router = Router()
@@ -366,11 +359,10 @@ scheduler_thread = threading.Thread(target=run_scheduler)
 
 if DEBUG:
     schedule.every(2).minutes.do(dispatch_is_on, config.tg_bot.token, adm.admin)
-    # schedule.every(1).minutes.do(not_change, config.tg_bot.token, adm.admin)
+
 else:
-    schedule.every(10).minutes.do(dispatch_is_on, config.tg_bot.token, adm.admin)
-    # schedule.every().hour.at(":00").do(dispatch_is_on, config.tg_bot.token, adm.admin)
-    # schedule.every().hour.at(":59").do(not_change, config.tg_bot.token, adm.admin)
+    schedule.every(2).minutes.do(dispatch_is_on, config.tg_bot.token, adm.admin)
+
 
 
 async def main():

@@ -22,6 +22,7 @@ def report(user: tuple):
     # выгрузка
     if len(info) != 0:
         for j in range(len(info)):
+            time.sleep(120)
             api = info[j][1]
             headers["Authorization"] = api
             init = 'https://statistics-api.wildberries.ru/api/v1/supplier/'
@@ -37,10 +38,12 @@ def report(user: tuple):
             date_y = date_y.strftime("%Y-%m-%d")
 
             results = f'{init}orders?dateFrom={date_t}&flag=1'
-            orders_t = pd.DataFrame(requests.get(results, headers=headers).json())  # заказы на текущую дату
+            orders_t_j = requests.get(results, headers=headers).json()
+            orders_t = pd.DataFrame(orders_t_j)  # заказы на текущую дату
 
             results = f'{init}orders?dateFrom={date_y}&flag=1'
-            orders_y = pd.DataFrame(requests.get(results, headers=headers).json())  # заказы на вчера
+            orders_y_j = requests.get(results, headers=headers).json()
+            orders_y = pd.DataFrame(orders_y_j)  # заказы на вчера
 
             orders_t['date'] = pd.to_datetime(orders_t['date'])
             orders_t['day'] = orders_t['date'].dt.strftime('%Y-%m-%d')
@@ -53,3 +56,4 @@ def report(user: tuple):
             ttl_sum_orders_y_now = round(sum(orders_y.query('date <=  @date_y_now')['priceWithDisc'])) # сумма на вчера к текущему времени +
             ttl_sum_orders_y = round(sum(orders_y.query('day==@date_y')['priceWithDisc'])) # сумма на вчера
             return ttl_sum_orders_t, ttl_sum_orders_y_now, ttl_sum_orders_y, info[j][0]
+
