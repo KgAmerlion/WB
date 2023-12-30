@@ -48,6 +48,7 @@ headers = CaseInsensitiveDict()
 storage = MemoryStorage()
 today = 0.
 y_day = 0.
+cancel = 0
 
 
 async def get_all_users():
@@ -60,6 +61,9 @@ async def get_all_users():
 
 
 def dispatch_is_on(token, admin):
+    tg.notify(message="Начало отправки отчётов", token=token, chat_id=admin)
+    global cancel
+    cancel = 1
     logger.info(f'Starting dispatch {datetime.now()}')
     global today, y_day
     db = sq.connect('my_bd.sql')
@@ -69,17 +73,20 @@ def dispatch_is_on(token, admin):
     users = cur.fetchall()
     if len(users) != 0:
         for i in users:
-            today, y_day, shop_name = report.report(i)
-            dif = today - y_day
+            today, y_now, y_day, shop_name = report.report(i)
+            dif = today - y_now
             text = f"Магазин : {shop_name}\n" \
-                   f"Прогноз : {y_day + dif}\n" \
-                   f"Сегодня: {today}\n"\
-                   f"Вчера: {y_day}\n"\
-                   f"Разница: {dif}"
+                   f"Прогноз : {(y_day + dif) // 1000} {(y_day + dif) % 1000}\n" \
+                   f"Сегодня: {today // 1000} {today % 1000}\n"\
+                   f"Вчера: {y_day // 1000} {y_day % 1000}\n"\
+                   f"Разница: {dif // 1000}  {dif % 1000}"
             tg.notify(message=text, token=token, chat_id=i[0])
-            logger.info(f'Dispatch was sent at  {datetime.now()} to user {i[0]}')
+            logger.info(f'Dispatch was sent at  {datetime.now()} to user {i[0]}. Sleep 1 min')
+            time.sleep(60)
+
     tg.notify(message="Отчеты отправлены", token=token, chat_id=admin)
     logger.info(f'Dispatch is complete {datetime.now()} ')
+    cancel = 0
 def not_change(token, admin):
     db = sq.connect('my_bd.sql')
     cur = db.cursor()
@@ -152,12 +159,16 @@ async def cancel_states(message: Message, state: FSMContext):
 # добавление магазина
 @router.message(F.text == "Добавить магазин")
 async def process_fillform_command(message: Message, state: FSMContext):
-    if status != 0:
-        await (message.answer(text=f'Пожалуйста, введите название магазина'))
-        # Устанавливаем состояние ожидания ввода имени
-        await state.set_state(Add.name)
+    global cancel
+    if cancel == 1:
+        await ((message.answer(text=f'Пожалуйста, дождитесь получения отчета')))
     else:
-        await (message.answer(text=f'Повторите попытку'))
+        if status != 0:
+            await (message.answer(text=f'Пожалуйста, введите название магазина'))
+            # Устанавливаем состояние ожидания ввода имени
+            await state.set_state(Add.name)
+        else:
+            await (message.answer(text=f'Повторите попытку'))
 
 
 @router.message(StateFilter(Add.name), F.text)
@@ -235,15 +246,18 @@ async def process_api(message: Message, state: FSMContext):
 @router.message(F.text == "Удалить магазин")
 async def delete_name_shop(message: Message, state: FSMContext):
     global status
-    await message.answer(text='Пожалуйста, введите название магазина, который хотите удалить')
-    status = 0
-    # Устанавливаем состояние ожидания ввода имени
-    await state.set_state(Delete.name)
+    if cancel == 1:
+        await message.answer(text='Пожалуйста, дождитесь получения отчета')
+    else:
+        await message.answer(text='Пожалуйста, введите название магазина, который хотите удалить')
+        status = 0
+        # Устанавливаем состояние ожидания ввода имени
+        await state.set_state(Delete.name)
 
 
 @router.message(StateFilter(Delete.name), F.text)
 async def delete_shop(message: Message, state: FSMContext):
-    global status
+    global status, cancel
     await state.update_data(name=message.text)
     if message.text in ("Список магазинов", "Удалить магазин", "Рассылка"):
         await message.answer(text='Некорректное название. Введите повторно')
@@ -351,11 +365,12 @@ def run_scheduler():
 scheduler_thread = threading.Thread(target=run_scheduler)
 
 if DEBUG:
-    schedule.every(3).minutes.do(dispatch_is_on, config.tg_bot.token, adm.admin)
-    schedule.every(2).minutes.do(not_change, config.tg_bot.token, adm.admin)
+    schedule.every(2).minutes.do(dispatch_is_on, config.tg_bot.token, adm.admin)
+    # schedule.every(1).minutes.do(not_change, config.tg_bot.token, adm.admin)
 else:
-    schedule.every().hour.at(":06").do(dispatch_is_on, config.tg_bot.token, adm.admin)
-    schedule.every().hour.at(":59").do(not_change, config.tg_bot.token, adm.admin)
+    schedule.every(10).minutes.do(dispatch_is_on, config.tg_bot.token, adm.admin)
+    # schedule.every().hour.at(":00").do(dispatch_is_on, config.tg_bot.token, adm.admin)
+    # schedule.every().hour.at(":59").do(not_change, config.tg_bot.token, adm.admin)
 
 
 async def main():
