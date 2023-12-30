@@ -74,6 +74,7 @@ def dispatch_is_on(token):
                    f"Разница: {dif}"
             tg.notify(message=text, token=token, chat_id=i[0])
             logger.info(f'Dispatch was sent at  {datetime.now()} to user {i[0]}')
+    tg.notify(message="Отчет отправлен", token=token, chat_id=168254118)
     logger.info(f'Dispatch is complete {datetime.now()} ')
 def not_change(token):
     db = sq.connect('my_bd.sql')
@@ -85,6 +86,7 @@ def not_change(token):
     for i in users:
         tg.notify(message=text, token=token, chat_id=i[0])
         logger.info(f'Notif sent {datetime.now()} user {i[0]}')
+    tg.notify(message="Уведомления отправлены", token=token, chat_id=168254118)
 
 
 router = Router()
@@ -185,28 +187,43 @@ async def process_name_sent(message: Message, state: FSMContext):
 
 @router.message(StateFilter(Add.wb_token), F.text)
 async def process_api(message: Message, state: FSMContext):
+    api_status = 0
     # Cохраняем данные о API
-    await state.update_data(wb_token=message.text)
-    # Добавляем в "базу данных" анкету пользователя
-    # по ключу id пользователя
-    user_dict[message.from_user.id] = await state.get_data()
-
+    api_to_add = message.text
+    # получаем все API из базы данных
     db = sq.connect('my_bd.sql')
     cur = db.cursor()
-
     cur.execute(
-        'INSERT INTO profiles VALUES (?, ?, ?, ?)', (message.from_user.id,
-                                                     user_dict[message.from_user.id]['name'],
-                                                     user_dict[message.from_user.id]['wb_token'],
-                                                     0))
+        "SELECT wb_token FROM profiles")
+    _to_add = cur.fetchall()
     db.commit()
-    cur.close()
-    db.close()
+    for i in range(len(_to_add)):
+        if api_to_add == _to_add[i][0]:
+            await message.answer(text='Данное API уже использовано')
+            api_status = 1
+            await state.clear()
+    if api_status != 1:
+        # Добавляем в "базу данных" анкету пользователя
+        # по ключу id пользователя
+        await state.update_data(wb_token=message.text)
+        user_dict[message.from_user.id] = await state.get_data()
 
-    # Завершаем машину состояний
-    await state.clear()
-    await message.answer(text='Магазин добавлен. Включите рассылку для нового магазина')
-    logging.info(f'Shop added {datetime.now()}')
+        db = sq.connect('my_bd.sql')
+        cur = db.cursor()
+
+        cur.execute(
+            'INSERT INTO profiles VALUES (?, ?, ?, ?)', (message.from_user.id,
+                                                         user_dict[message.from_user.id]['name'],
+                                                         user_dict[message.from_user.id]['wb_token'],
+                                                         0))
+        db.commit()
+        cur.close()
+        db.close()
+
+        # Завершаем машину состояний
+        await state.clear()
+        await message.answer(text='Магазин добавлен. Включите рассылку для нового магазина')
+        logging.info(f'Shop added {datetime.now()}')
 
 
 
@@ -329,8 +346,9 @@ def run_scheduler():
 
 scheduler_thread = threading.Thread(target=run_scheduler)
 
-schedule.every(60).minutes.do(dispatch_is_on, config.tg_bot.token)
-schedule.every(59).minutes.do(not_change, config.tg_bot.token)
+#schedule.every().minute.do(dispatch_is_on, config.tg_bot.token)
+# schedule.every(1).minutes.do(not_change, config.tg_bot.token)
+# schedule.every().hour.at(":00").do(dispatch_is_on, config.tg_bot.token)
 
 
 async def main():
