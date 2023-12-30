@@ -358,10 +358,10 @@ def run_scheduler():
 scheduler_thread = threading.Thread(target=run_scheduler)
 
 if DEBUG:
-    schedule.every(2).minutes.do(dispatch_is_on, config.tg_bot.token, adm.admin)
+    schedule.every().hour.do(dispatch_is_on, config.tg_bot.token, adm.admin)
 
 else:
-    schedule.every(2).minutes.do(dispatch_is_on, config.tg_bot.token, adm.admin)
+    schedule.every().hour.do(dispatch_is_on, config.tg_bot.token, adm.admin)
 
 
 
