@@ -20,7 +20,7 @@ import time
 import notifiers
 import sqlite3 as sq
 import report
-from config import Config, load_config, load_config_debug
+from config import Config, Admin, load_config, load_config_debug, load_admin_id
 
 # Инициализируем логгер
 logger = logging.getLogger(__name__)
@@ -32,10 +32,14 @@ DEBUG = False
 if DEBUG:
     config: Config = load_config_debug()
     BOT_TOKEN_DEBUG: str = config.tg_bot.token
+    adm: Admin = load_admin_id()
+    ADMIN: int = adm.admin
     bot = Bot(token=BOT_TOKEN_DEBUG, parse_mode=ParseMode.HTML)
 else:
     config: Config = load_config()
     BOT_TOKEN: str = config.tg_bot.token
+    adm: Admin = load_admin_id()
+    ADMIN: int = adm.admin
     bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
 
 storage = MemoryStorage()
@@ -55,7 +59,7 @@ async def get_all_users():
     return data
 
 
-def dispatch_is_on(token):
+def dispatch_is_on(token, admin):
     logger.info(f'Starting dispatch {datetime.now()}')
     global today, y_day
     db = sq.connect('my_bd.sql')
@@ -74,9 +78,9 @@ def dispatch_is_on(token):
                    f"Разница: {dif}"
             tg.notify(message=text, token=token, chat_id=i[0])
             logger.info(f'Dispatch was sent at  {datetime.now()} to user {i[0]}')
-    tg.notify(message="Отчет отправлен", token=token, chat_id=168254118)
+    tg.notify(message="Отчеты отправлены", token=token, chat_id=admin)
     logger.info(f'Dispatch is complete {datetime.now()} ')
-def not_change(token):
+def not_change(token, admin):
     db = sq.connect('my_bd.sql')
     cur = db.cursor()
     cur.execute(
@@ -86,7 +90,7 @@ def not_change(token):
     for i in users:
         tg.notify(message=text, token=token, chat_id=i[0])
         logger.info(f'Notif sent {datetime.now()} user {i[0]}')
-    tg.notify(message="Уведомления отправлены", token=token, chat_id=168254118)
+    tg.notify(message="Уведомления отправлены", token=token, chat_id=admin)
 
 
 router = Router()
@@ -346,9 +350,12 @@ def run_scheduler():
 
 scheduler_thread = threading.Thread(target=run_scheduler)
 
-#schedule.every().minute.do(dispatch_is_on, config.tg_bot.token)
-# schedule.every(1).minutes.do(not_change, config.tg_bot.token)
-# schedule.every().hour.at(":00").do(dispatch_is_on, config.tg_bot.token)
+if DEBUG:
+    schedule.every(3).minutes.do(dispatch_is_on, config.tg_bot.token, adm.admin)
+    schedule.every(2).minutes.do(not_change, config.tg_bot.token, adm.admin)
+else:
+    schedule.every().hour.at(":06").do(dispatch_is_on, config.tg_bot.token, adm.admin)
+    schedule.every().hour.at(":59").do(not_change, config.tg_bot.token, adm.admin)
 
 
 async def main():
